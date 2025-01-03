@@ -8,6 +8,8 @@ from flask import flash
 from flask import session
 from flask_bcrypt import Bcrypt
 from flask_wtf import FlaskForm
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from wtforms import StringField
 from wtforms import PasswordField
 from wtforms import SubmitField
@@ -15,7 +17,7 @@ from wtforms.validators import DataRequired
 from wtforms.validators import Length
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash
-import logging 
+import logging
 
 '''
 @ Configuração do Flask
@@ -45,7 +47,14 @@ class LoginForm(FlaskForm):
 '''
 @ Rota para página inicial
 '''
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"]
+)
+
 @app.route('/', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
 def login():
     form = LoginForm()
     if form.validate_on_submit():
@@ -56,10 +65,14 @@ def login():
             usuario_db = users_collection.find_one({'usuario': usuario})
             if usuario_db and bcrypt.check_password_hash(usuario_db['senha'], senha):
                 session['usuario'] = usuario
-                flash('Login realizado com sucesso!', 'success')
+                #flash('Login realizado com sucesso!', 'success')
+                logging.info('Login realizado com sucesso para o usuário: %s', usuario)
                 return redirect(url_for('home'))
+            else:
+                flash('Usuário ou senha inválidos', 'danger')
+                logging.warning('Falha no login para o usuário: %s', usuario)
         except Exception as e:
-            app.logger.error(e)
+            logging.error('Erro ao tentar realizar login: %s', str(e))
             flash('Usuário ou senha inválidos', 'danger')
     return render_template('login.html', form=form)
 
